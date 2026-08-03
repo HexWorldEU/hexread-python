@@ -1,0 +1,80 @@
+# Task runner for the HexRead Python packages (go-task). `task --list` shows everything.
+version: "3"
+
+vars:
+  CORE: packages/hexread
+  # All three publish in lockstep on one version; build and bootstrap loop over this list.
+  PKGS: packages/hexread packages/llama-index-readers-hexread packages/langchain-hexread
+
+tasks:
+  default:
+    cmds:
+      - task --list
+
+  bootstrap:
+    desc: Create each package's virtualenv (uv sync)
+    cmds:
+      - |
+        for p in {{.PKGS}}; do
+          echo "-> $p"
+          uv sync --project "$p" --all-extras
+        done
+
+  lint:
+    desc: ruff check over all three packages
+    cmds:
+      # ruff resolves settings per file from the nearest pyproject.toml, so one pass covers
+      # every package with that package's own config.
+      - uv run --project {{.CORE}} ruff check .
+
+  fmt:
+    desc: Format all Python sources (ruff format)
+    cmds:
+      - uv run --project {{.CORE}} ruff format .
+
+  fmt-check:
+    desc: Fail if any Python source needs formatting
+    cmds:
+      - uv run --project {{.CORE}} ruff format --check .
+
+  test:
+    desc: Run the core hexread tests
+    cmds:
+      - uv run --project {{.CORE}} pytest -q {{.CORE}}
+
+  test-integrations:
+    desc: Install both loaders with their frameworks and run their tests
+    cmds:
+      # The core SDK is installed from this checkout, not PyPI, so the loaders are tested
+      # against the code in the tree.
+      #
+      # --clear because plain `uv venv` refuses an existing .venv, which would make this task
+      # runnable exactly once per checkout. Rebuilding also matches CI, where every run starts on
+      # a fresh runner, so a stale install of the core SDK can never mask a change in the tree.
+      - uv venv --clear
+      - |
+        uv pip install pytest \
+          ./packages/hexread \
+          ./packages/llama-index-readers-hexread \
+          ./packages/langchain-hexread \
+          llama-index-core langchain-core
+      # pytest exits 5 when it collects no tests; tolerate that until a package has tests.
+      - .venv/bin/pytest -q packages/llama-index-readers-hexread || [ $? -eq 5 ]
+      - .venv/bin/pytest -q packages/langchain-hexread || [ $? -eq 5 ]
+
+  build:
+    desc: Build sdists + wheels for all three packages into dist/<package>
+    cmds:
+      - rm -rf dist
+      - |
+        for p in {{.PKGS}}; do
+          uv build "$p" --out-dir "dist/$(basename "$p")"
+        done
+      - ls -R dist
+
+  check:
+    desc: Everything CI runs
+    cmds:
+      - task: fmt-check
+      - task: lint
+      - task: test

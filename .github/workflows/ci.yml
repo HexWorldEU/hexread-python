@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: lint + test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The floor is the package's requires-python; the ceiling is the newest release.
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+    steps:
+      # Actions are pinned to commit SHAs; Dependabot updates the pins.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: 0.12.0 # same uv the HexRead service repo pins
+          python-version: ${{ matrix.python-version }}
+      - run: uv sync --project packages/hexread --all-extras
+      # ruff resolves settings per file from the nearest pyproject.toml, so one pass over the
+      # repo lints and format-checks all three packages with each package's own config.
+      - run: uv run --project packages/hexread ruff check .
+      - run: uv run --project packages/hexread ruff format --check .
+      # Strict here: the core package always has tests, so "no tests collected" is a failure.
+      - run: uv run --project packages/hexread pytest -q packages/hexread
+
+  integrations:
+    name: loader packages (llama-index + langchain)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: 0.12.0
+          python-version: "3.12"
+      # Both loaders in one environment: they are thin, they share the core SDK, and
+      # llama-index-core and langchain-core install side by side. The core package is installed
+      # from THIS checkout (a path, not PyPI) so the loaders are tested against the code here.
+      - run: uv venv
+      - run: >
+          uv pip install pytest
+          ./packages/hexread
+          ./packages/llama-index-readers-hexread
+          ./packages/langchain-hexread
+          llama-index-core langchain-core
+      # pytest exits 5 when it collects no tests; tolerate that until a package has tests.
+      - run: .venv/bin/pytest -q packages/llama-index-readers-hexread || [ $? -eq 5 ]
+      - run: .venv/bin/pytest -q packages/langchain-hexread || [ $? -eq 5 ]
+

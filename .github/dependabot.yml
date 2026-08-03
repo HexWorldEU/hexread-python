@@ -1,0 +1,30 @@
+# Keep the Python dependency graph and the pinned GitHub Actions fresh - these packages are
+# published to PyPI with attestations, so dependency drift is a supply-chain concern.
+# One entry per package: the three ship in lockstep but resolve their dependencies separately.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /packages/hexread
+    schedule:
+      interval: weekly
+    groups:
+      python-deps:
+        patterns: ["*"]
+  - package-ecosystem: pip
+    directory: /packages/llama-index-readers-hexread
+    schedule:
+      interval: weekly
+    groups:
+      python-deps:
+        patterns: ["*"]
+  - package-ecosystem: pip
+    directory: /packages/langchain-hexread
+    schedule:
+      interval: weekly
+    groups:
+      python-deps:
+        patterns: ["*"]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

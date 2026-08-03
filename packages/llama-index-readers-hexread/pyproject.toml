@@ -1,0 +1,61 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "llama-index-readers-hexread"
+version = "0.1.0"
+description = "LlamaIndex reader that turns PDFs and images into Markdown documents with the HexRead API."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+license-files = ["LICENSE"]
+authors = [{ name = "HexWorld Solutions GmbH", email = "support@hexread.com" }]
+keywords = ["pdf", "ocr", "markdown", "rag", "document parsing", "pdf to markdown"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Text Processing",
+  "Topic :: Text Processing :: Markup :: Markdown",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Typing :: Typed",
+]
+dependencies = ["hexread>=0.1.0", "llama-index-core>=0.11"]
+
+[project.urls]
+Homepage = "https://hexread.com"
+Documentation = "https://hexread.com/api"
+Source = "https://github.com/HexWorldEU/hexread-python"
+
+[dependency-groups]
+dev = ["ruff>=0.16", "pytest>=8"]
+
+# llama_index and llama_index.readers are implicit namespace packages shared with the rest of the
+# LlamaIndex ecosystem: only .../readers/hexread carries an __init__.py, so this wheel adds a
+# subpackage instead of shadowing anything.
+[tool.hatch.build.targets.wheel]
+packages = ["src/llama_index"]
+
+[tool.hatch.build.targets.sdist]
+only-include = ["src/llama_index", "README.md", "LICENSE"]
+
+[tool.ruff]
+# See ruff.toml at the repo root: markdown is excluded so the formatter leaves the
+# README's fenced Python examples, and their aligned comment columns, alone.
+extend-exclude = ["*.md"]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["A", "B", "E", "F", "I", "N", "SIM", "UP", "W"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

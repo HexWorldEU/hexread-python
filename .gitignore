@@ -1,0 +1,42 @@
+# Build output
+dist/
+build/
+*.egg-info/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.venv/
+venv/
+env/
+.python-version
+
+# Resolver output. These are libraries, not applications: dependency ranges are the contract,
+# so no lock file is committed and every `uv sync` / `uv run` writes one that stays local.
+uv.lock
+
+# Tool caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+
+# go-task fingerprint cache
+.task/
+
+# Editors and OS cruft
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+
+# Local development notes
+CLAUDE.md

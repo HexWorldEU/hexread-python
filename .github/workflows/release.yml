@@ -1,0 +1,123 @@
+name: Release
+
+# Tagging `vX.Y.Z` publishes all THREE packages to PyPI: hexread,
+# llama-index-readers-hexread and langchain-hexread. They ship in lockstep on one version,
+# so the first job refuses to build unless the tag matches every pyproject.toml.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Guard the version, test the tagged commit, build
+    runs-on: ubuntu-latest
+    steps:
+      # Actions are pinned to commit SHAs (privileged workflow); Dependabot updates the pins.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # The lockstep guard, first and cheap: three packages, one version, one tag. A mismatch
+      # here is a release that would put different versions of a single SDK on PyPI.
+      # tomllib is stdlib from Python 3.11; the runner image ships a newer python3 than that.
+      - name: Tag must equal the version in all three pyproject.toml files
+        run: |
+          case "$GITHUB_REF" in
+            refs/tags/v*) ;;
+            *) echo "release must run on a v* tag, got $GITHUB_REF"; exit 1 ;;
+          esac
+          tag="${GITHUB_REF#refs/tags/v}"
+          fail=0
+          for p in packages/hexread packages/llama-index-readers-hexread packages/langchain-hexread; do
+            v="$(python3 -c 'import sys,tomllib;print(tomllib.load(open(sys.argv[1],"rb"))["project"]["version"])' "$p/pyproject.toml")"
+            if [ "$v" != "$tag" ]; then
+              echo "MISMATCH: $p/pyproject.toml is $v, tag is $tag"
+              fail=1
+            else
+              echo "ok: $p is $v"
+            fi
+          done
+          if [ "$fail" -ne 0 ]; then
+            echo "the three packages ship in lockstep - set every version to $tag and re-tag"
+            exit 1
+          fi
+
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: 0.12.0
+          python-version: "3.12"
+
+      # A PyPI upload cannot be taken back: a release can be yanked, but the version and the
+      # filename are burned forever and every `pip install hexread` resolves against it. CI's
+      # green tick is on a branch commit, not necessarily this tag, so the TAGGED commit is
+      # linted and tested here, before anything is built or published.
+      - run: uv sync --project packages/hexread --all-extras
+      - run: uv run --project packages/hexread ruff check .
+      - run: uv run --project packages/hexread ruff format --check .
+      - run: uv run --project packages/hexread pytest -q packages/hexread
+      - name: Loader tests (frameworks alongside the core SDK from this checkout)
+        run: |
+          uv venv
+          uv pip install pytest \
+            ./packages/hexread \
+            ./packages/llama-index-readers-hexread \
+            ./packages/langchain-hexread \
+            llama-index-core langchain-core
+          .venv/bin/pytest -q packages/llama-index-readers-hexread || [ $? -eq 5 ]
+          .venv/bin/pytest -q packages/langchain-hexread || [ $? -eq 5 ]
+
+      # One directory per PyPI project: each project verifies its own trusted publisher, so
+      # each is uploaded by its own step in the publish job.
+      - name: Build the three distributions
+        run: |
+          for p in packages/hexread packages/llama-index-readers-hexread packages/langchain-hexread; do
+            uv build "$p" --out-dir "dist/$(basename "$p")"
+          done
+          ls -R dist
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    name: Publish to PyPI (Trusted Publishing)
+    needs: build
+    runs-on: ubuntu-latest
+    # The `pypi` environment gates the irreversible step. The job cannot run until that
+    # environment exists in repo Settings, and giving it a required reviewer holds every
+    # release for a human approval with the built distributions already attached above.
+    environment: pypi
+    permissions:
+      id-token: write # OIDC for PyPI Trusted Publishing; no API token is stored in this repo
+    steps:
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: dist
+          path: dist
+
+      # Trusted Publishing must be configured on PyPI BEFORE the first release, once per
+      # project (hexread, llama-index-readers-hexread, langchain-hexread): owner HexWorldEU,
+      # repository hexread-python, workflow `release.yml`, environment `pypi`. A project name
+      # that does not exist on PyPI yet is registered as a "pending publisher". Without it
+      # these steps fail closed at the OIDC exchange and nothing is uploaded.
+      - name: Publish hexread
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+        with:
+          packages-dir: dist/hexread
+          attestations: true
+
+      - name: Publish llama-index-readers-hexread
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+        with:
+          packages-dir: dist/llama-index-readers-hexread
+          attestations: true
+
+      - name: Publish langchain-hexread
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+        with:
+          packages-dir: dist/langchain-hexread
+          attestations: true

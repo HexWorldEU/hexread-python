@@ -1,0 +1,18 @@
+# Ruff settings for files OUTSIDE the three packages, chiefly the repo-root README.
+#
+# Each package carries its own [tool.ruff] in its pyproject.toml and ruff resolves settings from
+# the nearest config, so this file never overrides a package: it only covers what sits above them.
+#
+# Markdown is excluded on purpose. Since ruff 0.16 `*.md` is in the default `include` and the
+# formatter rewrites Python fenced blocks, which would collapse the aligned comment columns the
+# READMEs use as documentation:
+#
+#     res.pages[0].index      # 0   (zero-based)
+#     res.pages[0].number     # 1   (what a human writes)
+#
+# The snippets are illustrative, not a runnable module; correctness there is covered by the tests,
+# not by the formatter. Dropping the exclusion turns `task check` red on a README wording change.
+extend-exclude = ["*.md"]
+
+line-length = 100
+target-version = "py310"
