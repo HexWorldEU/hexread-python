@@ -38,14 +38,17 @@ class ProgressPrinter:
         self._min_interval = min_interval
         self._broken = False
         self._tty = self._detect_tty()
-        self._last_write = 0.0
+        # None until the first write. A 0.0 sentinel would be compared against time.monotonic(),
+        # whose origin is arbitrary, and on a freshly booted machine that swallows the first update.
+        self._last_write: float | None = None
         self._width = 0
         self._finished = False
 
     def __call__(self, progress: Progress) -> None:
         now = time.monotonic()
         final = progress.phase == "completed"
-        if not final and now - self._last_write < self._min_interval:
+        throttled = self._last_write is not None and now - self._last_write < self._min_interval
+        if throttled and not final:
             return
         self._last_write = now
 

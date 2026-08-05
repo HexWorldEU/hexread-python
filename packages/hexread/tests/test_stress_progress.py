@@ -10,6 +10,7 @@ degrade into silence rather than take a paid conversion down with it.
 from __future__ import annotations
 
 import io
+import time
 
 import httpx
 import pytest
@@ -360,3 +361,19 @@ def test_an_error_after_a_progress_update_is_still_the_error_raised(make_api, ma
 
     assert caught.value.code == "result_consumed"
     assert updates[-1].phase == "completed"
+
+
+def test_the_first_update_lands_on_a_freshly_booted_machine(monkeypatch):
+    """The throttle must not measure against an absolute clock reading.
+
+    time.monotonic() counts from an arbitrary origin, so on a machine booted moments ago it
+    returns a very small number. Comparing that to a zero sentinel made the first update look
+    like it arrived too soon and dropped it, which CI hit on a fresh runner.
+    """
+    monkeypatch.setattr(time, "monotonic", lambda: 0.03)
+    stream = Recorder(tty=False)
+    printer = ProgressPrinter(stream=stream, min_interval=60.0)
+
+    printer(Progress(phase="processing", pages_done=1, pages_total=9, source="a.pdf"))
+
+    assert stream.text, "the first update must always be written"
