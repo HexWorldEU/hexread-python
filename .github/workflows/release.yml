@@ -84,13 +84,22 @@ jobs:
           if-no-files-found: error
 
   publish:
-    name: Publish to PyPI (Trusted Publishing)
+    name: Publish ${{ matrix.package }} to PyPI
     needs: build
     runs-on: ubuntu-latest
-    # The `pypi` environment gates the irreversible step. The job cannot run until that
-    # environment exists in repo Settings, and giving it a required reviewer holds every
-    # release for a human approval with the built distributions already attached above.
-    environment: pypi
+    strategy:
+      # Each package uploads independently: a failure part way through must not cancel an
+      # upload already in flight, which would leave the release half published and unclear.
+      fail-fast: false
+      matrix:
+        package: [hexread, llama-index-readers-hexread, langchain-hexread]
+    # One environment PER PACKAGE, not one shared `pypi`. PyPI requires a pending trusted
+    # publisher to be unique on (owner, repository, workflow, environment) and does NOT count
+    # the project name, so three projects releasing from one workflow need three environments
+    # or only the first can be registered. Each also gates its own irreversible upload: the job
+    # cannot run until the environment exists in repo Settings, and a required reviewer there
+    # holds that package's release for a human approval with its distribution already built.
+    environment: pypi-${{ matrix.package }}
     permissions:
       id-token: write # OIDC for PyPI Trusted Publishing; no API token is stored in this repo
     steps:
@@ -100,24 +109,11 @@ jobs:
           path: dist
 
       # Trusted Publishing must be configured on PyPI BEFORE the first release, once per
-      # project (hexread, llama-index-readers-hexread, langchain-hexread): owner HexWorldEU,
-      # repository hexread-python, workflow `release.yml`, environment `pypi`. A project name
-      # that does not exist on PyPI yet is registered as a "pending publisher". Without it
-      # these steps fail closed at the OIDC exchange and nothing is uploaded.
-      - name: Publish hexread
-        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+      # project: owner HexWorldEU, repository hexread-python, workflow `release.yml`,
+      # environment `pypi-<project>`. A project name that does not exist on PyPI yet is
+      # registered as a "pending publisher". Without it this step fails closed at the OIDC
+      # exchange and nothing is uploaded.
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:
-          packages-dir: dist/hexread
-          attestations: true
-
-      - name: Publish llama-index-readers-hexread
-        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
-        with:
-          packages-dir: dist/llama-index-readers-hexread
-          attestations: true
-
-      - name: Publish langchain-hexread
-        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
-        with:
-          packages-dir: dist/langchain-hexread
+          packages-dir: dist/${{ matrix.package }}
           attestations: true
